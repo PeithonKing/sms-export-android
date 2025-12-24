@@ -15,16 +15,20 @@ class SmsReceiver : BroadcastReceiver() {
             try {
                 val msgs = Telephony.Sms.Intents.getMessagesFromIntent(intent)
                 if (msgs.isNotEmpty()) {
-                    // SMS messages can be split into multiple parts, but usually share the same sender
-                    val sender = msgs[0].originatingAddress
+                    val firstMsg = msgs.first()
+                    // SMS messages can be split into multiple parts, but usually share the same
+                    // sender
+                    val sender = firstMsg.originatingAddress
+                    val timestamp = firstMsg.timestampMillis
+
                     val sb = StringBuilder()
                     for (msg in msgs) {
                         sb.append(msg.messageBody)
                     }
                     val body = sb.toString()
 
-                    Log.i(TAG, "Intercepted SMS from $sender")
-                    Relay.forwardSms(sender, body)
+                    Log.i(TAG, "Intercepted SMS from $sender at $timestamp")
+                    Relay.forwardSms(context, sender, body, timestamp)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing SMS: ${e.message}")

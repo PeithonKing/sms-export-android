@@ -10,6 +10,7 @@ app = FastAPI()
 class SmsMessage(BaseModel):
     sender: str
     message: str
+    timestamp: int
 
 CSV_FILE = "messages.csv"
 
@@ -20,8 +21,11 @@ def read_root():
 @app.post("/")
 def log_message(sms: SmsMessage):
     try:
+        # Convert millis to ISO string
+        iso_time = datetime.fromtimestamp(sms.timestamp / 1000.0).isoformat()
+        
         data = {
-            "timestamp": [datetime.now().isoformat()],
+            "timestamp": [iso_time],
             "sender": [sms.sender],
             "message": [sms.message]
         }

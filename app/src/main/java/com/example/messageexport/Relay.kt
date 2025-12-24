@@ -9,22 +9,52 @@ import kotlin.concurrent.thread
 object Relay {
     private const val TAG = "Relay"
     // Configuration
-    private const val SERVER_IP = "192.168.29.2"
-    private const val SERVER_PORT = 5000
-    private const val ENDPOINT = "/" // Using root endpoint for now per instructions
+    private const val PREFS_NAME = "MessageExportPrefs"
+    private const val KEY_WIFI_ONLY = "wifi_only"
+    private const val KEY_SERVER_URL = "server_url"
+    private const val DEFAULT_SERVER_URL = "http://192.168.29.24:5000"
 
-    fun forwardSms(sender: String?, body: String?) {
+    fun forwardSms(
+            context: android.content.Context,
+            sender: String?,
+            body: String?,
+            timestamp: Long
+    ) {
         if (sender == null || body == null) {
             Log.e(TAG, "Skipping relay: Sender or Body is null")
             return
         }
 
-        Log.d(TAG, "Forwarding SMS from $sender: $body")
+        // Check Preferences
+        val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val wifiOnly = prefs.getBoolean(KEY_WIFI_ONLY, false)
+        var serverUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
+
+        if (wifiOnly && !isWifiConnected(context)) {
+            Log.i(TAG, "Skipping relay: Wi-Fi only mode is enabled and not connected to Wi-Fi.")
+            return
+        }
+
+        // Sanitize URL
+        if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+            serverUrl = "http://$serverUrl"
+        }
+        if (serverUrl.endsWith("/")) {
+            serverUrl = serverUrl.dropLast(1)
+        }
+
+        Log.d(TAG, "Forwarding SMS from $sender at $timestamp: $body to $serverUrl")
 
         thread(start = true) {
             var urlConnection: HttpURLConnection? = null
             try {
-                val url = URL("http://$SERVER_IP:$SERVER_PORT$ENDPOINT")
+                // Determine endpoint based on URL structure logic if needed,
+                // but for now simply append "/" as the root endpoint was requested.
+                // However, URL sanitation removed trailing slash, so we add it back if needed for
+                // the endpoint
+                val finalUrl = "$serverUrl/"
+
+                val url = URL(finalUrl)
                 urlConnection = url.openConnection() as HttpURLConnection
                 urlConnection.apply {
                     requestMethod = "POST"
@@ -35,11 +65,11 @@ object Relay {
                     readTimeout = 5000
                 }
 
-                // Create JSON payload manually to avoid adding Gson/Moshi dependency for now
-                // Escaping quotes and newlines roughly to be safe-ish
+                // Create JSON payload manually
                 val safeSender = escapeJsonString(sender)
                 val safeBody = escapeJsonString(body)
-                val jsonPayload = "{\"sender\": \"$safeSender\", \"message\": \"$safeBody\"}"
+                val jsonPayload =
+                        "{\"sender\": \"$safeSender\", \"message\": \"$safeBody\", \"timestamp\": $timestamp}"
 
                 OutputStreamWriter(urlConnection.outputStream).use { writer ->
                     writer.write(jsonPayload)
@@ -48,7 +78,6 @@ object Relay {
 
                 val responseCode = urlConnection.responseCode
                 Log.d(TAG, "Server responded with code: $responseCode")
-
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to relay message: ${e.message}")
                 e.printStackTrace()
@@ -58,11 +87,20 @@ object Relay {
         }
     }
 
+    private fun isWifiConnected(context: android.content.Context): Boolean {
+        val connectivityManager =
+                context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as
+                        android.net.ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
     private fun escapeJsonString(input: String): String {
         return input.replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
     }
 }

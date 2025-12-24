@@ -11,42 +11,57 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.example.messageexport.ui.theme.MessageExportTheme
 import androidx.core.app.ActivityCompat
+import com.example.messageexport.ui.theme.MessageExportTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
         // Request permissions immediately on launch for simplicity, as user agreed to grant them
-        val permissions = mutableListOf(
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS
-        )
+        val permissions =
+                mutableListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-        
+
         ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 101)
+
+        // Request battery optimization exemption
+        val powerManager =
+                getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                        !powerManager.isIgnoringBatteryOptimizations(packageName)
+        ) {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            intent.data = Uri.parse("package:$packageName")
+            startActivity(intent)
+        }
 
         setContent {
             MessageExportTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MainScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    MainScreen(modifier = Modifier.padding(innerPadding))
                 }
             }
         }
@@ -56,35 +71,77 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    
+    val prefs = remember {
+        context.getSharedPreferences("MessageExportPrefs", android.content.Context.MODE_PRIVATE)
+    }
+    var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
+    var serverUrl by remember {
+        mutableStateOf(
+                prefs.getString("server_url", "http://192.168.29.24:5000")
+                        ?: "http://192.168.29.24:5000"
+        )
+    }
+
     Column(modifier = modifier.padding(16.dp)) {
         Text("SMS Export Relay")
         Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(onClick = {
-            val intent = Intent(context, RelayService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-            Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT).show()
-        }) {
-            Text("Start Relay Service")
-        }
-        
+
+        // 1. Server Address Input
+        androidx.compose.material3.OutlinedTextField(
+                value = serverUrl,
+                onValueChange = {
+                    serverUrl = it
+                    prefs.edit().putString("server_url", it).apply()
+                },
+                label = { Text("Server URL") },
+                modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(onClick = {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                intent.data = Uri.parse("package:${context.packageName}")
-                context.startActivity(intent)
-            } else {
-                Toast.makeText(context, "Not required on this Android version", Toast.LENGTH_SHORT).show()
-            }
-        }) {
-             Text("Disable Battery Optimizations")
+
+        // 2. Start Relay Service
+        Button(
+                onClick = {
+                    val intent = Intent(context, RelayService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                    Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth()
+        ) { Text("Start Relay Service") }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 4. Send Test Request
+        Button(
+                onClick = {
+                    val dummySender = "+0000000000"
+                    val dummyBody = "Test Request from App Button"
+                    val dummyTimestamp = System.currentTimeMillis()
+                    Relay.forwardSms(context, dummySender, dummyBody, dummyTimestamp)
+                    Toast.makeText(context, "Test Request Sent (Check Logs)", Toast.LENGTH_SHORT)
+                            .show()
+                },
+                modifier = Modifier.fillMaxWidth()
+        ) { Text("Send Test Request") }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 5. Sync only via Wi-Fi (Moved to bottom)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "Sync only via Wi-Fi", modifier = Modifier.weight(1f))
+            Switch(
+                    checked = wifiOnly,
+                    onCheckedChange = { isChecked ->
+                        wifiOnly = isChecked
+                        prefs.edit().putBoolean("wifi_only", isChecked).apply()
+                    }
+            )
         }
     }
 }
