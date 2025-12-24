@@ -20,6 +20,7 @@ class RelayService : Service() {
         super.onCreate()
         Log.d(TAG, "RelayService Created")
         createNotificationChannel()
+        isServiceRunning = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,6 +62,7 @@ class RelayService : Service() {
         Log.d(TAG, "RelayService Destroyed")
         retryTimer?.cancel()
         retryTimer = null
+        isServiceRunning = false
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -78,5 +80,8 @@ class RelayService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
         }
+    }
+    companion object {
+        var isServiceRunning = false
     }
 }

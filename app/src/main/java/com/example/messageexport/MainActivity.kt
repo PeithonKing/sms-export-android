@@ -122,19 +122,28 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 3. Start Relay Service
+        // 3. Start/Stop Relay Service
+        var isServiceRunning by remember { mutableStateOf(RelayService.isServiceRunning) }
+
         Button(
                 onClick = {
                     val intent = Intent(context, RelayService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(intent)
+                    if (isServiceRunning) {
+                        context.stopService(intent)
+                        isServiceRunning = false
+                        Toast.makeText(context, "Service Stopped", Toast.LENGTH_SHORT).show()
                     } else {
-                        context.startService(intent)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                        isServiceRunning = true
+                        Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT).show()
                     }
-                    Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.fillMaxWidth()
-        ) { Text("Start Relay Service") }
+        ) { Text(if (isServiceRunning) "Stop Relay Service" else "Start Relay Service") }
         Spacer(modifier = Modifier.height(24.dp))
 
         // 5. Sync only via Wi-Fi (Moved to bottom)
@@ -160,6 +169,13 @@ fun MainScreen(modifier: Modifier = Modifier) {
         }
 
         Text("Buffered Messages: ${bufferedMessages.size}")
+
+        Text(
+                text =
+                        "Note: Some changes might get reflected below only after restarting the app.",
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(vertical = 4.dp)
+        )
 
         Button(
                 onClick = {
