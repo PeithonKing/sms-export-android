@@ -4,7 +4,6 @@ import android.util.Log
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.concurrent.thread
 
 object Relay {
     private const val TAG = "Relay"
@@ -19,10 +18,10 @@ object Relay {
             sender: String?,
             body: String?,
             timestamp: Long
-    ) {
+    ): Boolean {
         if (sender == null || body == null) {
             Log.e(TAG, "Skipping relay: Sender or Body is null")
-            return
+            return false
         }
 
         // Check Preferences
@@ -32,7 +31,7 @@ object Relay {
 
         if (wifiOnly && !isWifiConnected(context)) {
             Log.i(TAG, "Skipping relay: Wi-Fi only mode is enabled and not connected to Wi-Fi.")
-            return
+            return false
         }
 
         // Sanitize URL
@@ -45,45 +44,45 @@ object Relay {
 
         Log.d(TAG, "Forwarding SMS from $sender at $timestamp: $body to $serverUrl")
 
-        thread(start = true) {
-            var urlConnection: HttpURLConnection? = null
-            try {
-                // Determine endpoint based on URL structure logic if needed,
-                // but for now simply append "/" as the root endpoint was requested.
-                // However, URL sanitation removed trailing slash, so we add it back if needed for
-                // the endpoint
-                val finalUrl = "$serverUrl/"
+        var urlConnection: HttpURLConnection? = null
+        try {
+            // Determine endpoint based on URL structure logic if needed,
+            // but for now simply append "/" as the root endpoint was requested.
+            // However, URL sanitation removed trailing slash, so we add it back if needed for
+            // the endpoint
+            val finalUrl = "$serverUrl/"
 
-                val url = URL(finalUrl)
-                urlConnection = url.openConnection() as HttpURLConnection
-                urlConnection.apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                    setRequestProperty("Accept", "application/json")
-                    connectTimeout = 5000
-                    readTimeout = 5000
-                }
-
-                // Create JSON payload manually
-                val safeSender = escapeJsonString(sender)
-                val safeBody = escapeJsonString(body)
-                val jsonPayload =
-                        "{\"sender\": \"$safeSender\", \"message\": \"$safeBody\", \"timestamp\": $timestamp}"
-
-                OutputStreamWriter(urlConnection.outputStream).use { writer ->
-                    writer.write(jsonPayload)
-                    writer.flush()
-                }
-
-                val responseCode = urlConnection.responseCode
-                Log.d(TAG, "Server responded with code: $responseCode")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to relay message: ${e.message}")
-                e.printStackTrace()
-            } finally {
-                urlConnection?.disconnect()
+            val url = URL(finalUrl)
+            urlConnection = url.openConnection() as HttpURLConnection
+            urlConnection.apply {
+                requestMethod = "POST"
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("Accept", "application/json")
+                connectTimeout = 5000
+                readTimeout = 5000
             }
+
+            // Create JSON payload manually
+            val safeSender = escapeJsonString(sender)
+            val safeBody = escapeJsonString(body)
+            val jsonPayload =
+                    "{\"sender\": \"$safeSender\", \"message\": \"$safeBody\", \"timestamp\": $timestamp}"
+
+            OutputStreamWriter(urlConnection.outputStream).use { writer ->
+                writer.write(jsonPayload)
+                writer.flush()
+            }
+
+            val responseCode = urlConnection.responseCode
+            Log.d(TAG, "Server responded with code: $responseCode")
+            return responseCode == 200
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to relay message: ${e.message}")
+            e.printStackTrace()
+            return false
+        } finally {
+            urlConnection?.disconnect()
         }
     }
 

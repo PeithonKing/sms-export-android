@@ -99,7 +99,30 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 2. Start Relay Service
+        // 2. Send Test Request
+        Button(
+                onClick = {
+                    val dummySender = "+0000000000"
+                    val dummyBody = "Test Request from App Button"
+                    val dummyTimestamp = System.currentTimeMillis()
+
+                    kotlin.concurrent.thread(start = true) {
+                        val success =
+                                Relay.forwardSms(context, dummySender, dummyBody, dummyTimestamp)
+                        val message =
+                                if (success) "Test Request Sent Successfully"
+                                else "Test Request Failed"
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+        ) { Text("Send Test Request") }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 3. Start Relay Service
         Button(
                 onClick = {
                     val intent = Intent(context, RelayService::class.java)
@@ -112,27 +135,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 },
                 modifier = Modifier.fillMaxWidth()
         ) { Text("Start Relay Service") }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 4. Send Test Request
-        Button(
-                onClick = {
-                    val dummySender = "+0000000000"
-                    val dummyBody = "Test Request from App Button"
-                    val dummyTimestamp = System.currentTimeMillis()
-                    Relay.forwardSms(context, dummySender, dummyBody, dummyTimestamp)
-                    Toast.makeText(context, "Test Request Sent (Check Logs)", Toast.LENGTH_SHORT)
-                            .show()
-                },
-                modifier = Modifier.fillMaxWidth()
-        ) { Text("Send Test Request") }
-
         Spacer(modifier = Modifier.height(24.dp))
 
         // 5. Sync only via Wi-Fi (Moved to bottom)
+        // 5. Sync only via Wi-Fi
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = "Sync only via Wi-Fi", modifier = Modifier.weight(1f))
             Switch(
@@ -142,6 +148,55 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         prefs.edit().putBoolean("wifi_only", isChecked).apply()
                     }
             )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 6. Buffered Messages Section
+        var bufferedMessages by remember { mutableStateOf(emptyList<BufferedMessage>()) }
+
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            bufferedMessages = MessageBuffer.getMessages(context)
+        }
+
+        Text("Buffered Messages: ${bufferedMessages.size}")
+
+        Button(
+                onClick = {
+                    kotlin.concurrent.thread(start = true) {
+                        val (sent, failed) = MessageBuffer.retryBufferedMessages(context)
+                        val message = "Retry Complete. Sent: $sent, Failed: $failed"
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            // Refresh list
+                            bufferedMessages = MessageBuffer.getMessages(context)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = bufferedMessages.isNotEmpty()
+        ) { Text("Retry All Unsent Messages") }
+
+        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.height(200.dp)) {
+            items(bufferedMessages.size) { i ->
+                val msg = bufferedMessages[i]
+                androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text("To: ${msg.sender}")
+                        Text(
+                                text =
+                                        java.text.SimpleDateFormat(
+                                                        "HH:mm:ss",
+                                                        java.util.Locale.getDefault()
+                                                )
+                                                .format(java.util.Date(msg.timestamp)),
+                                style =
+                                        androidx.compose.material3.MaterialTheme.typography
+                                                .bodySmall
+                        )
+                    }
+                }
+            }
         }
     }
 }

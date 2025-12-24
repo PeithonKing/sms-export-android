@@ -28,7 +28,18 @@ class SmsReceiver : BroadcastReceiver() {
                     val body = sb.toString()
 
                     Log.i(TAG, "Intercepted SMS from $sender at $timestamp")
-                    Relay.forwardSms(context, sender, body, timestamp)
+                    kotlin.concurrent.thread(start = true) {
+                        val success = Relay.forwardSms(context, sender, body, timestamp)
+                        if (!success) {
+                            Log.i(TAG, "Forwarding failed. Buffering message.")
+                            // sender and body can technically be null in Relay.forwardSms
+                            // signature,
+                            // but usually not null from Telephony. Safely handle them.
+                            if (sender != null && body != null) {
+                                MessageBuffer.addMessage(context, sender, body, timestamp)
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing SMS: ${e.message}")
