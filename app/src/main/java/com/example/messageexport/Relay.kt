@@ -12,6 +12,7 @@ object Relay {
     // Configuration
     private const val PREFS_NAME = "MessageExportPrefs"
     private const val KEY_WIFI_ONLY = "wifi_only"
+    private const val KEY_PAUSE_SYNC = "pause_sync"
     private const val KEY_SERVER_URL = "server_url"
     private const val DEFAULT_SERVER_URL = "http://192.168.29.24:5000"
 
@@ -29,7 +30,13 @@ object Relay {
         // Check Preferences
         val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
         val wifiOnly = prefs.getBoolean(KEY_WIFI_ONLY, false)
+        val pauseSync = prefs.getBoolean(KEY_PAUSE_SYNC, false)
         var serverUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
+
+        if (pauseSync) {
+            Log.i(TAG, "Skipping relay: Sync is paused.")
+            return false
+        }
 
         if (wifiOnly && !isWifiConnected(context)) {
             Log.i(TAG, "Skipping relay: Wi-Fi only mode is enabled and not connected to Wi-Fi.")

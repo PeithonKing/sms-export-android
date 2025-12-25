@@ -75,6 +75,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
         context.getSharedPreferences("MessageExportPrefs", android.content.Context.MODE_PRIVATE)
     }
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
+    var pauseSync by remember { mutableStateOf(prefs.getBoolean("pause_sync", false)) }
     var serverUrl by remember {
         mutableStateOf(
                 prefs.getString("server_url", "http://192.168.29.24:5000")
@@ -125,28 +126,70 @@ fun MainScreen(modifier: Modifier = Modifier) {
         // 3. Start/Stop Relay Service
         var isServiceRunning by remember { mutableStateOf(RelayService.isServiceRunning) }
 
-        Button(
-                onClick = {
-                    val intent = Intent(context, RelayService::class.java)
-                    if (isServiceRunning) {
-                        context.stopService(intent)
-                        isServiceRunning = false
-                        Toast.makeText(context, "Service Stopped", Toast.LENGTH_SHORT).show()
-                    } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            context.startForegroundService(intent)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Foreground Runner")
+                Text(
+                        text = if (isServiceRunning) "Running" else "Stopped",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        color =
+                                if (isServiceRunning)
+                                        androidx.compose.material3.MaterialTheme.colorScheme.primary
+                                else androidx.compose.material3.MaterialTheme.colorScheme.error
+                )
+            }
+            Switch(
+                    checked = isServiceRunning,
+                    onCheckedChange = { isChecked ->
+                        val intent = Intent(context, RelayService::class.java)
+                        if (isChecked) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
+                            isServiceRunning = true
+                            Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT).show()
                         } else {
-                            context.startService(intent)
+                            context.stopService(intent)
+                            isServiceRunning = false
+                            Toast.makeText(context, "Service Stopped", Toast.LENGTH_SHORT).show()
                         }
-                        isServiceRunning = true
-                        Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT).show()
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-        ) { Text(if (isServiceRunning) "Stop Relay Service" else "Start Relay Service") }
+            )
+        }
+
+        // Explanatory Text
+        Text(
+                text = "Keeps the app alive in the background to listen for SMS.",
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 4. Pause Sync Toggle
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "Pause Sync", modifier = Modifier.weight(1f))
+            Switch(
+                    checked = pauseSync,
+                    onCheckedChange = { isChecked ->
+                        pauseSync = isChecked
+                        prefs.edit().putBoolean("pause_sync", isChecked).apply()
+                    }
+            )
+        }
+        Text(
+                text =
+                        "Temporarily prevent messages from being sent. They will be buffered locally.",
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 4.dp)
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
 
         // 5. Sync only via Wi-Fi (Moved to bottom)
+        // 5. Sync only via Wi-Fi
         // 5. Sync only via Wi-Fi
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = "Sync only via Wi-Fi", modifier = Modifier.weight(1f))
@@ -158,6 +201,11 @@ fun MainScreen(modifier: Modifier = Modifier) {
                     }
             )
         }
+        Text(
+                text = "Only send messages when connected to Wi-Fi to save mobile data.",
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 4.dp)
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
