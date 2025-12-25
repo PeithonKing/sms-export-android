@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -95,203 +94,220 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) { bufferedMessages = MessageBuffer.getMessages(context) }
 
-    Column(
-            modifier = modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-                "SMS Export Relay",
-                style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(bottom = 16.dp).align(Alignment.Start)
-        )
+    LazyColumn(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text(
+                    "SMS Export Relay",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
 
         // Group 1: Core Configuration (Server, Test, Listener)
-        SettingsGroup {
-            // Server URL
-            OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = {
-                        serverUrl = it
-                        prefs.edit().putString("server_url", it).apply()
-                    },
-                    label = { Text("Server URL") },
-                    modifier = Modifier.fillMaxWidth()
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-            // Test Request
-            Button(
-                    onClick = {
-                        val dummySender = "+0000000000"
-                        val dummyBody = "Test Request from App Button"
-                        val dummyTimestamp = System.currentTimeMillis()
-
-                        kotlin.concurrent.thread(start = true) {
-                            val success =
-                                    Relay.forwardSms(
-                                            context,
-                                            dummySender,
-                                            dummyBody,
-                                            dummyTimestamp
-                                    )
-                            val message =
-                                    if (success) "Test Request Sent Successfully"
-                                    else "Test Request Failed"
-                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-            ) { Text("Send Test Request") }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-            // Always On Listener (Toggle)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "Always On Listener")
-                    Text(
-                            text = if (isServiceRunning) "Running" else "Stopped",
-                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                            color =
-                                    if (isServiceRunning)
-                                            androidx.compose.material3.MaterialTheme.colorScheme
-                                                    .primary
-                                    else androidx.compose.material3.MaterialTheme.colorScheme.error
-                    )
-                }
-                Switch(
-                        checked = isServiceRunning,
-                        onCheckedChange = { isChecked ->
-                            val intent = Intent(context, RelayService::class.java)
-                            if (isChecked) {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                    context.startForegroundService(intent)
-                                } else {
-                                    context.startService(intent)
-                                }
-                                isServiceRunning = true
-                                Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT)
-                                        .show()
-                            } else {
-                                context.stopService(intent)
-                                isServiceRunning = false
-                                Toast.makeText(context, "Service Stopped", Toast.LENGTH_SHORT)
-                                        .show()
-                            }
-                        }
+        item {
+            SettingsGroup {
+                OutlinedTextField(
+                        value = serverUrl,
+                        onValueChange = {
+                            serverUrl = it
+                            prefs.edit().putString("server_url", it).apply()
+                        },
+                        label = { Text("Server URL") },
+                        modifier = Modifier.fillMaxWidth()
                 )
-            }
-            Text(
-                    text = "Keeps the app alive in the background to listen for SMS.",
-                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 4.dp)
-            )
-        }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Group 2: Toggles (Pause Sync, Wi-Fi Only)
-        SettingsGroup {
-            // Pause Sync
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Pause Sync", modifier = Modifier.weight(1f))
-                Switch(
-                        checked = pauseSync,
-                        onCheckedChange = { isChecked ->
-                            pauseSync = isChecked
-                            prefs.edit().putBoolean("pause_sync", isChecked).apply()
-                        }
-                )
-            }
-            Text(
-                    text =
-                            "Temporarily prevent messages from being sent. They will be buffered locally.",
-                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 4.dp)
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-            // Wi-Fi Only
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Sync only via Wi-Fi", modifier = Modifier.weight(1f))
-                Switch(
-                        checked = wifiOnly,
-                        onCheckedChange = { isChecked ->
-                            wifiOnly = isChecked
-                            prefs.edit().putBoolean("wifi_only", isChecked).apply()
-                        }
-                )
-            }
-            Text(
-                    text = "Only send messages when connected to Wi-Fi to save mobile data.",
-                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Group 3: Buffered Messages
-        SettingsGroup {
-            Column {
-                Text("Buffered Messages")
-                Text(
-                        "Count: ${bufferedMessages.size}",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                        color =
-                                androidx.compose.material3.MaterialTheme.colorScheme
-                                        .onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                    onClick = {
-                        kotlin.concurrent.thread(start = true) {
-                            val (sent, failed) = MessageBuffer.retryBufferedMessages(context)
-                            val message = "Retry Complete. Sent: $sent, Failed: $failed"
-                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                bufferedMessages = MessageBuffer.getMessages(context)
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = bufferedMessages.isNotEmpty()
-            ) { Text("Retry All") }
-
-            if (bufferedMessages.isNotEmpty()) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                LazyColumn(modifier = Modifier.height(150.dp)) {
-                    items(bufferedMessages.size) { i ->
-                        val msg = bufferedMessages[i]
-                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                            Text(
-                                    "To: ${msg.sender}",
-                                    style =
-                                            androidx.compose.material3.MaterialTheme.typography
-                                                    .bodyMedium
-                            )
-                            Text(
-                                    text =
-                                            java.text.SimpleDateFormat(
-                                                            "HH:mm:ss",
-                                                            java.util.Locale.getDefault()
-                                                    )
-                                                    .format(java.util.Date(msg.timestamp)),
-                                    style =
-                                            androidx.compose.material3.MaterialTheme.typography
-                                                    .labelSmall
-                            )
-                        }
-                        if (i < bufferedMessages.size - 1) {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Button(
+                        onClick = {
+                            val dummySender = "+0000000000"
+                            val dummyBody = "Test Request from App Button"
+                            val dummyTimestamp = System.currentTimeMillis()
+
+                            kotlin.concurrent.thread(start = true) {
+                                val success =
+                                        Relay.forwardSms(
+                                                context,
+                                                dummySender,
+                                                dummyBody,
+                                                dummyTimestamp
+                                        )
+                                val message =
+                                        if (success) "Test Request Sent Successfully"
+                                        else "Test Request Failed"
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                ) { Text("Send Test Request") }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Always On Listener")
+                        Text(
+                                text = if (isServiceRunning) "Running" else "Stopped",
+                                style =
+                                        androidx.compose.material3.MaterialTheme.typography
+                                                .bodySmall,
+                                color =
+                                        if (isServiceRunning)
+                                                androidx.compose.material3.MaterialTheme.colorScheme
+                                                        .primary
+                                        else
+                                                androidx.compose.material3.MaterialTheme.colorScheme
+                                                        .error
+                        )
+                    }
+                    Switch(
+                            checked = isServiceRunning,
+                            onCheckedChange = { isChecked ->
+                                val intent = Intent(context, RelayService::class.java)
+                                if (isChecked) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        context.startForegroundService(intent)
+                                    } else {
+                                        context.startService(intent)
+                                    }
+                                    isServiceRunning = true
+                                    Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT)
+                                            .show()
+                                } else {
+                                    context.stopService(intent)
+                                    isServiceRunning = false
+                                    Toast.makeText(context, "Service Stopped", Toast.LENGTH_SHORT)
+                                            .show()
+                                }
+                            }
+                    )
+                }
+                Text(
+                        text = "Keeps the app alive in the background to listen for SMS.",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(24.dp)) }
+
+        // Group 2: Toggles (Pause Sync, Wi-Fi Only)
+        item {
+            SettingsGroup {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "Pause Sync", modifier = Modifier.weight(1f))
+                    Switch(
+                            checked = pauseSync,
+                            onCheckedChange = { isChecked ->
+                                pauseSync = isChecked
+                                prefs.edit().putBoolean("pause_sync", isChecked).apply()
+                            }
+                    )
+                }
+                Text(
+                        text =
+                                "Temporarily prevent messages from being sent. They will be buffered locally.",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "Sync only via Wi-Fi", modifier = Modifier.weight(1f))
+                    Switch(
+                            checked = wifiOnly,
+                            onCheckedChange = { isChecked ->
+                                wifiOnly = isChecked
+                                prefs.edit().putBoolean("wifi_only", isChecked).apply()
+                            }
+                    )
+                }
+                Text(
+                        text = "Only send messages when connected to Wi-Fi to save mobile data.",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(24.dp)) }
+
+        // Group 3: Unsent Messages (header, button, and messages all in one group)
+        item {
+            SettingsGroup {
+                Column {
+                    Text("Unsent Messages")
+                    Text(
+                            "Count: ${bufferedMessages.size}",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            color =
+                                    androidx.compose.material3.MaterialTheme.colorScheme
+                                            .onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                        onClick = {
+                            kotlin.concurrent.thread(start = true) {
+                                val (sent, failed) = MessageBuffer.retryBufferedMessages(context)
+                                val message = "Retry Complete. Sent: $sent, Failed: $failed"
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                    bufferedMessages = MessageBuffer.getMessages(context)
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = bufferedMessages.isNotEmpty()
+                ) { Text("Retry All") }
+
+                // Messages inside the same group
+                if (bufferedMessages.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    Column {
+                        bufferedMessages.forEach { msg ->
+                            Card(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    colors =
+                                            CardDefaults.cardColors(
+                                                    containerColor =
+                                                            androidx.compose.material3.MaterialTheme
+                                                                    .colorScheme
+                                                                    .surfaceVariant.copy(
+                                                                    alpha = 0.3f
+                                                            )
+                                            )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                            "To: ${msg.sender}",
+                                            style =
+                                                    androidx.compose.material3.MaterialTheme
+                                                            .typography
+                                                            .bodyMedium
+                                    )
+                                    Text(
+                                            text =
+                                                    java.text.SimpleDateFormat(
+                                                                    "HH:mm:ss",
+                                                                    java.util.Locale.getDefault()
+                                                            )
+                                                            .format(java.util.Date(msg.timestamp)),
+                                            style =
+                                                    androidx.compose.material3.MaterialTheme
+                                                            .typography
+                                                            .labelSmall,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
