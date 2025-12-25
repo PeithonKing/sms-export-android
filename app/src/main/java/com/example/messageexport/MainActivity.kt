@@ -8,8 +8,12 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,14 +23,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,6 +89,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -92,13 +107,92 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var isServiceRunning by remember { mutableStateOf(RelayService.isServiceRunning) }
     var bufferedMessages by remember { mutableStateOf(emptyList<BufferedMessage>()) }
 
+    // Multi-selection state
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var showDiscardConfirmation by remember { mutableStateOf(false) }
+    var showSendConfirmation by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) { bufferedMessages = MessageBuffer.getMessages(context) }
+
+    // Handle Back Press
+    BackHandler(enabled = selectionMode) {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
+    // Confirmation Dialogs
+    if (showDiscardConfirmation) {
+        AlertDialog(
+                onDismissRequest = { showDiscardConfirmation = false },
+                title = { Text("Discard Messages?") },
+                text = {
+                    Text("Do you really want to discard the ${selectedIds.size} selected items?")
+                },
+                confirmButton = {
+                    TextButton(
+                            onClick = {
+                                val idsToDelete = selectedIds // Capture current set
+                                if (idsToDelete.isNotEmpty()) {
+                                    MessageBuffer.removeMessages(context, idsToDelete)
+                                    bufferedMessages = MessageBuffer.getMessages(context)
+                                    selectedIds = emptySet()
+                                    selectionMode = false // Exit mode after action
+                                    Toast.makeText(
+                                                    context,
+                                                    "${idsToDelete.size} messages discarded",
+                                                    Toast.LENGTH_SHORT
+                                            )
+                                            .show()
+                                }
+                                showDiscardConfirmation = false
+                            }
+                    ) { Text("Discard") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDiscardConfirmation = false }) { Text("Cancel") }
+                }
+        )
+    }
+
+    if (showSendConfirmation) {
+        AlertDialog(
+                onDismissRequest = { showSendConfirmation = false },
+                title = { Text("Send Messages?") },
+                text = {
+                    Text("Do you really want to send the ${selectedIds.size} selected items?")
+                },
+                confirmButton = {
+                    TextButton(
+                            onClick = {
+                                val idsToSend = selectedIds // Capture current set
+                                kotlin.concurrent.thread(start = true) {
+                                    val (sent, failed) =
+                                            MessageBuffer.retryMessages(context, idsToSend)
+                                    val message =
+                                            "Selected Retry Complete. Sent: $sent, Failed: $failed"
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        bufferedMessages = MessageBuffer.getMessages(context)
+                                        selectedIds = emptySet()
+                                        selectionMode = false // Exit selection mode
+                                    }
+                                }
+                                showSendConfirmation = false
+                            }
+                    ) { Text("Send") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSendConfirmation = false }) { Text("Cancel") }
+                }
+        )
+    }
 
     LazyColumn(modifier = modifier.fillMaxSize().padding(16.dp)) {
         item {
             Text(
                     "SMS Export Relay",
-                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.padding(bottom = 16.dp)
             )
         }
@@ -150,16 +244,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         Text(text = "Always On Listener")
                         Text(
                                 text = if (isServiceRunning) "Running" else "Stopped",
-                                style =
-                                        androidx.compose.material3.MaterialTheme.typography
-                                                .bodySmall,
+                                style = MaterialTheme.typography.bodySmall,
                                 color =
-                                        if (isServiceRunning)
-                                                androidx.compose.material3.MaterialTheme.colorScheme
-                                                        .primary
-                                        else
-                                                androidx.compose.material3.MaterialTheme.colorScheme
-                                                        .error
+                                        if (isServiceRunning) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.error
                         )
                     }
                     Switch(
@@ -186,7 +274,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 }
                 Text(
                         text = "Keeps the app alive in the background to listen for SMS.",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -210,7 +298,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 Text(
                         text =
                                 "Temporarily prevent messages from being sent. They will be buffered locally.",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(top = 4.dp)
                 )
 
@@ -228,7 +316,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 }
                 Text(
                         text = "Only send messages when connected to Wi-Fi to save mobile data.",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -236,76 +324,164 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
         item { Spacer(modifier = Modifier.height(24.dp)) }
 
-        // Group 3: Unsent Messages (header, button, and messages all in one group)
+        // Group 3: Unsent Messages
         item {
             SettingsGroup {
-                Column {
-                    Text("Unsent Messages")
-                    Text(
-                            "Count: ${bufferedMessages.size}",
-                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                            color =
-                                    androidx.compose.material3.MaterialTheme.colorScheme
-                                            .onSurfaceVariant
-                    )
+                if (selectionMode) {
+                    // Contextual Top Bar
+                    Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                    checked =
+                                            selectedIds.size == bufferedMessages.size &&
+                                                    bufferedMessages.isNotEmpty(),
+                                    onCheckedChange = { isChecked ->
+                                        selectedIds =
+                                                if (isChecked) {
+                                                    bufferedMessages.map { it.id }.toSet()
+                                                } else {
+                                                    emptySet()
+                                                }
+                                    }
+                            )
+                            Text(
+                                    text = "${selectedIds.size} selected",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
+
+                        Row {
+                            // Send
+                            IconButton(onClick = { showSendConfirmation = true }) {
+                                Icon(
+                                        imageVector =
+                                                androidx.compose.material.icons.Icons.AutoMirrored
+                                                        .Filled.Send,
+                                        contentDescription = "Send Selected"
+                                )
+                            }
+                            // Discard
+                            IconButton(onClick = { showDiscardConfirmation = true }) {
+                                Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Discard Selected"
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                } else {
+                    // Normal Header
+                    Column {
+                        Text("Unsent Messages")
+                        Text(
+                                "Count: ${bufferedMessages.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                            onClick = {
+                                kotlin.concurrent.thread(start = true) {
+                                    val (sent, failed) =
+                                            MessageBuffer.retryBufferedMessages(context)
+                                    val message = "Retry Complete. Sent: $sent, Failed: $failed"
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        bufferedMessages = MessageBuffer.getMessages(context)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = bufferedMessages.isNotEmpty()
+                    ) { Text("Retry All") }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                        onClick = {
-                            kotlin.concurrent.thread(start = true) {
-                                val (sent, failed) = MessageBuffer.retryBufferedMessages(context)
-                                val message = "Retry Complete. Sent: $sent, Failed: $failed"
-                                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                    bufferedMessages = MessageBuffer.getMessages(context)
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = bufferedMessages.isNotEmpty()
-                ) { Text("Retry All") }
-
-                // Messages inside the same group
+                // Messages List
                 if (bufferedMessages.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    if (!selectionMode)
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                     Column {
                         bufferedMessages.forEach { msg ->
+                            val isSelected = selectedIds.contains(msg.id)
                             Card(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    modifier =
+                                            Modifier.fillMaxWidth()
+                                                    .padding(vertical = 4.dp)
+                                                    .combinedClickable(
+                                                            onClick = {
+                                                                if (selectionMode) {
+                                                                    selectedIds =
+                                                                            if (isSelected)
+                                                                                    selectedIds -
+                                                                                            msg.id
+                                                                            else
+                                                                                    selectedIds +
+                                                                                            msg.id
+                                                                }
+                                                            },
+                                                            onLongClick = {
+                                                                if (!selectionMode) {
+                                                                    selectionMode = true
+                                                                    selectedIds = setOf(msg.id)
+                                                                }
+                                                            }
+                                                    ),
                                     colors =
                                             CardDefaults.cardColors(
                                                     containerColor =
-                                                            androidx.compose.material3.MaterialTheme
-                                                                    .colorScheme
-                                                                    .surfaceVariant.copy(
-                                                                    alpha = 0.3f
-                                                            )
+                                                            if (isSelected)
+                                                                    MaterialTheme.colorScheme
+                                                                            .primaryContainer
+                                                            else
+                                                                    MaterialTheme.colorScheme
+                                                                            .surfaceVariant.copy(
+                                                                            alpha = 0.3f
+                                                                    )
                                             )
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                            "To: ${msg.sender}",
-                                            style =
-                                                    androidx.compose.material3.MaterialTheme
-                                                            .typography
-                                                            .bodyMedium
-                                    )
-                                    Text(
-                                            text =
-                                                    java.text.SimpleDateFormat(
-                                                                    "HH:mm:ss",
-                                                                    java.util.Locale.getDefault()
-                                                            )
-                                                            .format(java.util.Date(msg.timestamp)),
-                                            style =
-                                                    androidx.compose.material3.MaterialTheme
-                                                            .typography
-                                                            .labelSmall,
-                                            modifier = Modifier.padding(top = 4.dp)
-                                    )
+                                Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(12.dp)
+                                ) {
+                                    if (selectionMode) {
+                                        Checkbox(
+                                                checked = isSelected,
+                                                onCheckedChange = null, // Handled by card click
+                                                modifier = Modifier.padding(end = 12.dp)
+                                        )
+                                    }
+
+                                    Column {
+                                        Text(
+                                                "To: ${msg.sender}",
+                                                style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                                text =
+                                                        java.text.SimpleDateFormat(
+                                                                        "HH:mm:ss",
+                                                                        java.util.Locale
+                                                                                .getDefault()
+                                                                )
+                                                                .format(
+                                                                        java.util.Date(
+                                                                                msg.timestamp
+                                                                        )
+                                                                ),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -322,8 +498,7 @@ fun SettingsGroup(content: @Composable androidx.compose.foundation.layout.Column
             colors =
                     CardDefaults.cardColors(
                             containerColor =
-                                    androidx.compose.material3.MaterialTheme.colorScheme
-                                            .surfaceVariant.copy(alpha = 0.5f)
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ),
             shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth()

@@ -72,6 +72,20 @@ object MessageBuffer {
         }
     }
 
+    @Synchronized
+    fun removeMessages(context: Context, ids: Set<String>) {
+        val messages = getMessages(context).toMutableList()
+        val initialSize = messages.size
+        val removed = messages.removeIf { it.id in ids }
+        if (removed) {
+            saveMessages(context, messages)
+            Log.i(
+                    TAG,
+                    "Batch removed ${initialSize - messages.size} messages. Remaining: ${messages.size}"
+            )
+        }
+    }
+
     fun retryBufferedMessages(context: Context): Pair<Int, Int> {
         val messages = getMessages(context)
         if (messages.isEmpty()) return Pair(0, 0)
@@ -79,18 +93,53 @@ object MessageBuffer {
         Log.i(TAG, "Retrying ${messages.size} buffered messages...")
         var sentCount = 0
         var failCount = 0
+        val successfulIds = mutableSetOf<String>()
 
         messages.forEach { msg ->
             // Note: forwardSms is blocking, so this is synchronous
             val success = Relay.forwardSms(context, msg.sender, msg.body, msg.timestamp)
             if (success) {
-                removeMessage(context, msg.id)
+                successfulIds.add(msg.id)
                 sentCount++
             } else {
                 failCount++
             }
         }
+
+        if (successfulIds.isNotEmpty()) {
+            removeMessages(context, successfulIds)
+        }
+
         Log.i(TAG, "Retry complete. Sent: $sentCount, Failed: $failCount")
+        return Pair(sentCount, failCount)
+    }
+
+    fun retryMessages(context: Context, ids: Set<String>): Pair<Int, Int> {
+        val allMessages = getMessages(context)
+        val messagesToRetry = allMessages.filter { it.id in ids }
+
+        if (messagesToRetry.isEmpty()) return Pair(0, 0)
+
+        Log.i(TAG, "Retrying ${messagesToRetry.size} selected messages...")
+        var sentCount = 0
+        var failCount = 0
+        val successfulIds = mutableSetOf<String>()
+
+        messagesToRetry.forEach { msg ->
+            val success = Relay.forwardSms(context, msg.sender, msg.body, msg.timestamp)
+            if (success) {
+                successfulIds.add(msg.id)
+                sentCount++
+            } else {
+                failCount++
+            }
+        }
+
+        if (successfulIds.isNotEmpty()) {
+            removeMessages(context, successfulIds)
+        }
+
+        Log.i(TAG, "Selected retry complete. Sent: $sentCount, Failed: $failCount")
         return Pair(sentCount, failCount)
     }
 }
