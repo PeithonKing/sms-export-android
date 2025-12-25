@@ -4,9 +4,11 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 import java.util.UUID
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
+@Serializable
 data class BufferedMessage(
         val id: String,
         val sender: String,
@@ -40,21 +42,8 @@ object MessageBuffer {
 
         return try {
             val jsonString = file.readText()
-            val jsonArray = JSONArray(jsonString)
-            val messages = mutableListOf<BufferedMessage>()
-
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                messages.add(
-                        BufferedMessage(
-                                id = obj.getString("id"),
-                                sender = obj.getString("sender"),
-                                body = obj.getString("body"),
-                                timestamp = obj.getLong("timestamp")
-                        )
-                )
-            }
-            messages
+            if (jsonString.isBlank()) return emptyList()
+            Json.decodeFromString<List<BufferedMessage>>(jsonString)
         } catch (e: Exception) {
             Log.e(TAG, "Error reading buffered messages", e)
             emptyList()
@@ -64,17 +53,9 @@ object MessageBuffer {
     @Synchronized
     private fun saveMessages(context: Context, messages: List<BufferedMessage>) {
         try {
-            val jsonArray = JSONArray()
-            messages.forEach { msg ->
-                val obj = JSONObject()
-                obj.put("id", msg.id)
-                obj.put("sender", msg.sender)
-                obj.put("body", msg.body)
-                obj.put("timestamp", msg.timestamp)
-                jsonArray.put(obj)
-            }
+            val jsonString = Json.encodeToString(messages)
             context.openFileOutput(FILE_NAME, Context.MODE_PRIVATE).use {
-                it.write(jsonArray.toString().toByteArray())
+                it.write(jsonString.toByteArray())
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error saving buffered messages", e)

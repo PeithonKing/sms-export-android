@@ -4,6 +4,8 @@ import android.util.Log
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 object Relay {
     private const val TAG = "Relay"
@@ -63,11 +65,9 @@ object Relay {
                 readTimeout = 5000
             }
 
-            // Create JSON payload manually
-            val safeSender = escapeJsonString(sender)
-            val safeBody = escapeJsonString(body)
-            val jsonPayload =
-                    "{\"sender\": \"$safeSender\", \"message\": \"$safeBody\", \"timestamp\": $timestamp}"
+            // Create JSON payload using kotlinx.serialization
+            val payload = SmsPayload(sender = sender, message = body, timestamp = timestamp)
+            val jsonPayload = Json.encodeToString(payload)
 
             OutputStreamWriter(urlConnection.outputStream).use { writer ->
                 writer.write(jsonPayload)
@@ -95,11 +95,5 @@ object Relay {
         return capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
     }
 
-    private fun escapeJsonString(input: String): String {
-        return input.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t")
-    }
+    // escapeJsonString removed - kotlinx.serialization handles escaping automatically
 }
