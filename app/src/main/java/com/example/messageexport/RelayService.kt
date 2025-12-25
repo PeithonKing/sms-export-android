@@ -34,7 +34,15 @@ class RelayService : Service() {
                         .build()
 
         try {
-            startForeground(1, notification)
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                        1,
+                        notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(1, notification)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground service: ${e.message}")
         }

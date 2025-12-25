@@ -14,7 +14,7 @@ object Relay {
     private const val KEY_WIFI_ONLY = "wifi_only"
     private const val KEY_PAUSE_SYNC = "pause_sync"
     private const val KEY_SERVER_URL = "server_url"
-    private const val DEFAULT_SERVER_URL = "http://192.168.29.24:5000"
+    private const val DEFAULT_SERVER_URL = "http://192.168.29.2:5000"
 
     fun forwardSms(
             context: android.content.Context,
