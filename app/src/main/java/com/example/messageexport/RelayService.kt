@@ -26,11 +26,21 @@ class RelayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "RelayService Started")
 
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent =
+                android.app.PendingIntent.getActivity(
+                        this,
+                        0,
+                        notificationIntent,
+                        android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+
         val notification: Notification =
                 NotificationCompat.Builder(this, CHANNEL_ID)
                         .setContentTitle("SMS Relay Active")
                         .setContentText("Listening for incoming SMS messages...")
                         .setSmallIcon(android.R.drawable.ic_menu_send)
+                        .setContentIntent(pendingIntent)
                         .build()
 
         try {

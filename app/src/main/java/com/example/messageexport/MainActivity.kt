@@ -42,6 +42,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -104,7 +105,22 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         ?: "http://192.168.29.2:5000"
         )
     }
-    var isServiceRunning by remember { mutableStateOf(RelayService.isServiceRunning) }
+    var isServiceRunning by remember {
+        mutableStateOf(RelayService.isServiceRunning || prefs.getBoolean("service_enabled", false))
+    }
+
+    // Ensure service matches state on launch if needed (e.g. if killed and restarted)
+    LaunchedEffect(Unit) {
+        if (prefs.getBoolean("service_enabled", false) && !RelayService.isServiceRunning) {
+            val intent = Intent(context, RelayService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            RelayService.isServiceRunning = true
+        }
+    }
     var bufferedMessages by remember { mutableStateOf(emptyList<BufferedMessage>()) }
 
     // Multi-selection state
@@ -114,6 +130,29 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var showSendConfirmation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { bufferedMessages = MessageBuffer.getMessages(context) }
+
+    DisposableEffect(Unit) {
+        val receiver =
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(
+                            context: android.content.Context?,
+                            intent: android.content.Intent?
+                    ) {
+                        context?.let { ctx -> bufferedMessages = MessageBuffer.getMessages(ctx) }
+                    }
+                }
+        val filter = android.content.IntentFilter("com.example.messageexport.BUFFER_UPDATED")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(
+                    receiver,
+                    filter,
+                    android.content.Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+        onDispose { context.unregisterReceiver(receiver) }
+    }
 
     // Handle Back Press
     BackHandler(enabled = selectionMode) {
@@ -261,11 +300,13 @@ fun MainScreen(modifier: Modifier = Modifier) {
                                         context.startService(intent)
                                     }
                                     isServiceRunning = true
+                                    prefs.edit().putBoolean("service_enabled", true).apply()
                                     Toast.makeText(context, "Service Started", Toast.LENGTH_SHORT)
                                             .show()
                                 } else {
                                     context.stopService(intent)
                                     isServiceRunning = false
+                                    prefs.edit().putBoolean("service_enabled", false).apply()
                                     Toast.makeText(context, "Service Stopped", Toast.LENGTH_SHORT)
                                             .show()
                                 }
@@ -461,25 +502,56 @@ fun MainScreen(modifier: Modifier = Modifier) {
                                         )
                                     }
 
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        // Primary Line: Sender and Date
+                                        Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                    text = "To: ${msg.sender}",
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    fontWeight =
+                                                            androidx.compose.ui.text.font.FontWeight
+                                                                    .Medium,
+                                                    maxLines = 1,
+                                                    overflow =
+                                                            androidx.compose.ui.text.style
+                                                                    .TextOverflow.Ellipsis,
+                                                    modifier =
+                                                            Modifier.weight(1f, fill = false)
+                                                                    .padding(end = 8.dp)
+                                            )
+                                            Text(
+                                                    text =
+                                                            java.text.SimpleDateFormat(
+                                                                            "MMM dd",
+                                                                            java.util.Locale
+                                                                                    .getDefault()
+                                                                    )
+                                                                    .format(
+                                                                            java.util.Date(
+                                                                                    msg.timestamp
+                                                                            )
+                                                                    ),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color =
+                                                            MaterialTheme.colorScheme
+                                                                    .onSurfaceVariant
+                                            )
+                                        }
+
+                                        // Secondary Line: Message Body Preview
                                         Text(
-                                                "To: ${msg.sender}",
-                                                style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                                text =
-                                                        java.text.SimpleDateFormat(
-                                                                        "HH:mm:ss",
-                                                                        java.util.Locale
-                                                                                .getDefault()
-                                                                )
-                                                                .format(
-                                                                        java.util.Date(
-                                                                                msg.timestamp
-                                                                        )
-                                                                ),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                modifier = Modifier.padding(top = 4.dp)
+                                                text = msg.body,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow =
+                                                        androidx.compose.ui.text.style.TextOverflow
+                                                                .Ellipsis,
+                                                modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
                                 }

@@ -57,6 +57,10 @@ object MessageBuffer {
             context.openFileOutput(FILE_NAME, Context.MODE_PRIVATE).use {
                 it.write(jsonString.toByteArray())
             }
+            // Notify UI of changes
+            val intent = android.content.Intent("com.example.messageexport.BUFFER_UPDATED")
+            intent.setPackage(context.packageName) // Restrict to this app
+            context.sendBroadcast(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Error saving buffered messages", e)
         }
