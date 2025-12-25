@@ -35,7 +35,7 @@ class SmsReceiver : BroadcastReceiver() {
                             // sender and body can technically be null in Relay.forwardSms
                             // signature,
                             // but usually not null from Telephony. Safely handle them.
-                            if (sender != null && body != null) {
+                            if (sender != null) {
                                 MessageBuffer.addMessage(context, sender, body, timestamp)
                             }
                         }
